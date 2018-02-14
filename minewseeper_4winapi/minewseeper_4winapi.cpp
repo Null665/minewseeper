@@ -1,4 +1,7 @@
-#define WINVER 0x501
+// Enable Visual styles
+#pragma comment(linker,"\"/manifestdependency:type='win32' \
+name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 #include <windows.h>
 #include <ctime>
@@ -39,23 +42,21 @@ void DrawBoard(HDC hdc, Board &b)
 	hbitmaps[9] = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(IDB_CELL));
 	hbitmaps[10] = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(IDB_CELL_MINE));
 
-
 	for (int i = 0;i<11;i++)
 		hbrushes[i] = CreatePatternBrush(hbitmaps[i]);
-
 
 	for (int i = 0;i<b.GetWidth();i++)
 	{
 		for (int j = 0;j<b.GetHeight();j++)
 		{
-			if (b.IsCoveredCell(i, j))
+			if (b.GetCell(i, j).IsCovered())
 				SelectObject(hdc, hbrushes[9]);
-			else if (b.GetCellValue(i, j) == C_EMPTY)
-				SelectObject(hdc, hbrushes[0]);
-			else if (b.GetCellValue(i, j) >= 1 && b.GetCellValue(i, j) <= 8)
-				SelectObject(hdc, hbrushes[b.GetCellValue(i, j)]);
-			else if (b.GetCellValue(i, j) == C_MINE)
+			else if (b.GetCell(i, j).IsMine())
 				SelectObject(hdc, hbrushes[10]);
+			else if (b.GetCell(i, j).GetValue() == 0)
+				SelectObject(hdc, hbrushes[0]);
+			else if (b.GetCell(i, j).GetValue())
+				SelectObject(hdc, hbrushes[b.GetCell(i, j).GetValue()]);
 
 			int size, border;
 			size = border = 20;
@@ -74,13 +75,11 @@ void DrawBoard(HDC hdc, Board &b)
 }
 
 
-int WINAPI WinMain(HINSTANCE hThisInstance,
-	HINSTANCE hPrevInstance,
-	LPSTR lpszArgument,
-	int nCmdShow)
+int WINAPI WinMain(_In_ HINSTANCE hThisInstance,
+	_In_opt_ HINSTANCE hPrevInstance,
+	_In_ LPTSTR lpszArgument,
+	_In_ int nCmdShow)
 {
-	srand(time(0));
-
 	HWND hwnd;               /* This is the handle for our window */
 	MSG messages;            /* Here messages to the application are saved */
 	WNDCLASSEX wincl;        /* Data structure for the windowclass */
@@ -128,7 +127,7 @@ int WINAPI WinMain(HINSTANCE hThisInstance,
 		TranslateMessage(&messages);
 		DispatchMessage(&messages);
 	}
-	return messages.wParam;
+	return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +198,7 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 		InvalidateRect(hwnd, &r, TRUE);
 		UpdateWindow(hwnd);
 
-		if (b.GetGameState() == G_LOST)
+		if (b.GetGameState() == Board::State::Lost)
 		{
 			if (MessageBox(hwnd, "You lost! Play again?", "Boom", 64 | MB_YESNO) != IDYES)
 				DestroyWindow(hwnd);
@@ -210,9 +209,9 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 				UpdateWindow(hwnd);
 			}
 		}
-		else if (b.GetGameState() == G_WON)
+		else if (b.GetGameState() == Board::State::Won)
 		{
-			if (MessageBox(hwnd, "You won! Play again?", "Congrats", 64 | MB_YESNO) != IDYES)
+			if (MessageBox(hwnd, "You won! Play again?", "Congrats", 48 | MB_YESNO) != IDYES)
 				DestroyWindow(hwnd);
 			else
 			{
@@ -278,7 +277,7 @@ void AdjustWindowSize(HWND hwnd, const Board &b, int cell_size, int border)
 {
 	RECT r;
 	GetWindowRect(hwnd, &r);
-	int width = (b.GetWidth()*cell_size) + (border * 3);
-	int height = (b.GetHeight()*cell_size) + (border * 5);
-	MoveWindow(hwnd, r.left, r.top, width, height, 0);
+	auto width = (b.GetWidth()*cell_size) + (border * 3);
+	auto height = (b.GetHeight()*cell_size) + (border * 5);
+	MoveWindow(hwnd, r.left, r.top, (int)width, (int)height, 0);
 }

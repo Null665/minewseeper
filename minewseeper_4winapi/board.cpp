@@ -1,19 +1,21 @@
 #include "board.h"
 #include <cstdlib>
-#include <Windows.h>
+#include <fstream>
+#include <random>
 using namespace std;
 
+const std::string Board::save_filename = "game.txt";
 
 Board::Board()
 {
 	width = 9, height = 9;
 	n_mines = 9;
-	game_state = G_NOTSTARTED;
+	game_state = State::NotStarted;
 }
 
-bool Board::SetOptions(int width, int height, int n_mines)
+bool Board::SetOptions(size_t width, size_t height, size_t n_mines)
 {
-	if (width<MIN_WIDTH || height<MIN_HEIGHT || width>MAX_WIDTH || height>MAX_HEIGHT)
+	if (width<MIN_SIZE || height<MIN_SIZE || width>MAX_SIZE || height>MAX_SIZE)
 		return false;
 	if (((width - 1)*(height - 1))<n_mines)
 		return false;
@@ -27,7 +29,7 @@ bool Board::SetOptions(int width, int height, int n_mines)
 	return true;
 }
 
-int Board::GetGameState() const
+Board::State Board::GetGameState() const
 {
 	return game_state;
 }
@@ -36,107 +38,108 @@ int Board::GetGameState() const
 void Board::NewGame()
 {
 	grid.clear();
-	game_state = G_NOTSTARTED;
+	game_state = State::NotStarted;
 
-	for (int i = 0;i<width;i++)
+	// Construct the game grid
+	for (auto i = 0; i < width; i++)
 	{
-		grid.push_back(vector<Cell>());
-		for (int j = 0;j<height;j++)
-			grid[i].push_back(Cell());
+		grid.emplace_back(vector<Cell>());
+		for (auto j = 0; j < height; j++)
+			grid[i].emplace_back(Cell());
 	}
 
+	// Randomly place mines
+	std::random_device rnd;
+	mt19937 mt(rnd());
+	uniform_int_distribution<size_t> ud_width(0, width - 1);
+	uniform_int_distribution<size_t> ud_height(0, height - 1);
 
-	for (int i = 0;i<n_mines;i++)
+	for (auto i = 0;i<n_mines;i++)
 	{
-		int rx = rand() % (width - 1);
-		int ry = rand() % (height - 1);
-
-		if (grid[rx][ry].value == C_MINE)
+		auto rx = ud_width(mt);
+		auto ry = ud_height(mt);
+		// cannot place two mines in one cell
+		if (grid.at(rx).at(ry).IsMine())
 		{
 			i--;
 			continue;
 		}
-
-		grid[rx][ry].value = C_MINE;
+		grid.at(rx).at(ry).SetMine();
 	}
 
 	// Put numbers around mines
-	for (int i = 0;i<width - 1;i++)
-		for (int j = 0;j<height - 1;j++)
+	for (auto i = 0;i<width;i++)
+		for (auto j = 0;j<height;j++)
 		{
-			if (grid[i][j].value == C_MINE)
+			if (grid[i][j].IsMine())
 			{
 				if (i>0)
-					if (grid[i - 1][j].value != C_MINE)
-						grid[i - 1][j].value++;
+					if (grid[i - 1][j].IsMine() == false)
+						grid[i - 1][j].IncreaseValue();
 				if (i<width - 1)
-					if (grid[i + 1][j].value != C_MINE)
-						grid[i + 1][j].value++;
+					if (grid[i + 1][j].IsMine() == false)
+						grid[i + 1][j].IncreaseValue();
 				
 				if(j>0)
-					if (grid[i][j - 1].value != C_MINE)
-						grid[i][j - 1].value++;
+					if (grid[i][j - 1].IsMine() == false)
+						grid[i][j - 1].IncreaseValue();
 
-				if (grid[i][j + 1].value != C_MINE && j<height - 1)
-					grid[i][j + 1].value++;
+				if (j<height - 1)
+					if (grid[i][j + 1].IsMine() == false)
+						grid[i][j + 1].IncreaseValue();
 
 				if (i>0 && j>0)
-					if (grid[i - 1][j - 1].value != C_MINE)
-						grid[i - 1][j - 1].value++;
+					if (grid[i - 1][j - 1].IsMine() == false)
+						grid[i - 1][j - 1].IncreaseValue();
 				if (j<height - 1 && i<width - 1)
-					if (grid[i + 1][j + 1].value != C_MINE)
-						grid[i + 1][j + 1].value++;
+					if (grid[i + 1][j + 1].IsMine() == false)
+						grid[i + 1][j + 1].IncreaseValue();
 				if (i<width - 1 && j>0)
-					if (grid[i + 1][j - 1].value != C_MINE)
-						grid[i + 1][j - 1].value++;
+					if (grid[i + 1][j - 1].IsMine() == false)
+						grid[i + 1][j - 1].IncreaseValue();
 				if (i>0 && j<height - 1)
-					if (grid[i - 1][j + 1].value != C_MINE)
-						grid[i - 1][j + 1].value++;
+					if (grid[i - 1][j + 1].IsMine() == false)
+						grid[i - 1][j + 1].IncreaseValue();
 			}
 		}
 }
 
-bool Board::IsCoveredCell(int x, int y) const
+const Cell &Board::GetCell(size_t x, size_t y) const
 {
-	return grid.at(x).at(y).covered;
+	return grid.at(x).at(y);
 }
 
-int Board::GetCellValue(int x, int y) const
+void Board::Uncover(size_t x, size_t y)
 {
-	return grid.at(x).at(y).value;
-}
+	if (game_state == State::NotStarted)
+		game_state = State::Playing;
 
-void Board::Uncover(int x, int y)
-{
-	if (game_state == G_NOTSTARTED)
-		game_state = G_PLAYING;
-
-	if (x >= GetWidth() || y >= GetHeight() || x<0 || y<0)
+	if (x >= GetWidth() || y >= GetHeight())
 		return;
 
-	grid[x][y].covered = false;
+	grid[x][y].SetCovered(false);
 
-	if (grid[x][y].value == C_MINE)
+	if (grid[x][y].IsMine())
 	{
-		game_state = G_LOST;
+		game_state = State::Lost;
 		return;
 	}
-	if (is_won())
-	{
-		game_state = G_WON;
-		return;
-	}
-
 
 	uncover_empty_cells(x, y);
+
+	if (is_won())
+	{
+		game_state = State::Won;
+		return;
+	}
 }
 
-int Board::GetWidth() const
+auto Board::GetWidth() const -> decltype(width)
 {
 	return width;
 }
 
-int Board::GetHeight() const
+auto Board::GetHeight() const -> decltype(height)
 {
 	return height;
 }
@@ -144,63 +147,58 @@ int Board::GetHeight() const
 
 void Board::SaveGame()
 {
-
-	HANDLE hFile = CreateFile("game.txt", GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-	if (hFile == INVALID_HANDLE_VALUE)
-		return;
-
-	DWORD dwWritten;
-	WriteFile(hFile, &width, sizeof(width), &dwWritten, 0);
-	WriteFile(hFile, &height, sizeof(height), &dwWritten, 0);
-	WriteFile(hFile, &n_mines, sizeof(n_mines), &dwWritten, 0);
-
-	CloseHandle(hFile);
+	ofstream file(save_filename, ios::out);
+	if (file)
+	{
+		file << width << " " << height << " " << n_mines;
+		file.close();
+	}
 }
-
-
 
 void Board::LoadGame()
 {
-	HANDLE hFile = CreateFile("game.txt", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-
-	DWORD dwRead;
-	ReadFile(hFile, &width, sizeof(width), &dwRead, 0);
-	ReadFile(hFile, &height, sizeof(height), &dwRead, 0);
-	ReadFile(hFile, &n_mines, sizeof(n_mines), &dwRead, 0);
-
-	CloseHandle(hFile);
+	ifstream file(save_filename, ios::in);
+	if (file)
+	{
+		file >> width >> height >> n_mines;
+		file.close();
+	}
 }
 
 
-
-void Board::uncover_empty_cells(int begin_x, int begin_y)
+// Uncovers empty cells recursively
+// Nonrecursive code would have an advantage tha it wouldn't be limited by stack size
+void Board::uncover_empty_cells(size_t x, size_t y)
 {
-	int x = begin_x, y = begin_y;
-
-	grid[x][y].covered = false;
-
-	if (GetCellValue(x, y) != C_EMPTY)
+	// If cell contains a value, it must not be uncovered
+	if (GetCell(x, y).IsMine())
 		return;
 
-	if (begin_x>0)
+	grid[x][y].SetCovered(false);
+
+	// If cell contains a value, it must not be uncovered
+	if (GetCell(x, y).GetValue())
+		return;
+
+	// Recursively uncover surrounding cells
+	if (x > 0)
 	{
-		if (IsCoveredCell(x - 1, y))
+		if (GetCell(x - 1, y).IsCovered())
 			uncover_empty_cells(x - 1, y);
 	}
-	if (begin_x<GetWidth() - 1)
+	if (x < GetWidth() - 1)
 	{
-		if (IsCoveredCell(x + 1, y))
+		if (GetCell(x + 1, y).IsCovered())
 			uncover_empty_cells(x + 1, y);
 	}
-
-	if (begin_y>0)
+	if (y > 0)
 	{
-		if (IsCoveredCell(x, y - 1))
+		if (GetCell(x, y - 1).IsCovered())
 			uncover_empty_cells(x, y - 1);
 	}
-	if (begin_y<GetHeight() - 1)
+	if (y < GetHeight() - 1)
 	{
-		if (IsCoveredCell(x, y + 1))
+		if (GetCell(x, y + 1).IsCovered())
 			uncover_empty_cells(x, y + 1);
 	}
 
@@ -210,7 +208,7 @@ bool Board::is_won() const
 {
 	for (int i = 0;i<GetWidth();i++)
 		for (int j = 0;j<GetHeight();j++)
-			if (grid[i][j].covered == true && (grid[i][j].value >= 1 && grid[i][j].value <= 8 || grid[i][j].value == C_EMPTY))
+			if (grid[i][j].IsCovered() && !grid[i][j].IsMine() )
 				return false;
 	return true;
 }
