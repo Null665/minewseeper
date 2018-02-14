@@ -161,9 +161,6 @@
     <Image Include="bmp\cell_empty.bmp" />
     <Image Include="bmp\cell_mine.bmp" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="readme.md" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
